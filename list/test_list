@@ -1,0 +1,1 @@
+A0:FF:70:17:0C:81 test123 2|test123 |[255,0,0]|0.1|/home/pi/notifications/alert04.mp3|0" | nc -U /mnt/ram/sense_hat_socket

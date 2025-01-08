@@ -1,0 +1,1 @@
+04:F0:21:31:2F:54 "EMSA" echo "2|Wifi Detected EMSA |red|0.01||0" | nc -U /mnt/ram/message_socket

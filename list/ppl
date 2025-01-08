@@ -1,0 +1,2 @@
+
+60:60:1F:15:A2:91 "805 car" echo "2|805 Car |[255,0,0]|0.1|/home/pi/notifications/scroll.mp3|0" | nc -U /mnt/ram/sense_hat_socket # Tall bitches car or device from apt.805

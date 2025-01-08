@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Tension WiFi</title>
+    <link href="http://wizardmon/css/css2.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <video class="video-background" autoplay loop muted playsinline>
+        <source src="static/video/wifi.mp4" type="video/mp4">
+    </video>
+    <div class="grid-container">
+        <div class="cyber-panel">
+            <div class="header-content">
+                <h1 id="sense" class="cyber-title">Digital Tension WiFi</h1>
+		<h1 id="sense" class="cyber-title">Wizardmon</h1>
+                <div class="status-info">
+                    <div class="status-item">
+                        <span class="status-label">STATUS:</span>
+                        <span id="monitor-status" class="status-value">RUNNING</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">SCAN CYCLE:</span>
+                        <span id="cycle-count">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">CHANNELS:</span>
+                        <span id="channel-info" class="status-value">2.4GHz: 1,6,11 | 5GHz: 44,52,100,149,157,161</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="tab-navigation">
+            <button class="tab-button active" data-tab="devices">DETECTED DEVICES</button>
+            <button class="tab-button" data-tab="lists">LISTS</button>
+        </div>
+
+        <div class="main-content" role="main">
+            <!-- Devices Tab -->
+                    <div class="config-info">
+                        <div class="config-item"></div>
+                        <div class="config-item">Capture Time: <span id="capture-time">13</span>s per cycle</div>
+                    </div>
+
+            <div id="devices-tab" class="tab-content active">
+                <div class="cyber-panel log-panel">
+                    <div class="panel-header">
+
+                        <h2 id="detected-devices" class="cyber-title">DETECTED DEVICES</h2>
+                    </div>
+                    <div class="log-container">
+                        <div id="device-list" class="device-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lists Tab -->
+            <div id="lists-tab" class="tab-content">
+                <div class="cyber-panel lists-panel">
+                    <div class="lists-container">
+                        <div class="active-lists">
+                            <h3 class="cyber-title">Active Lists</h3>
+                            <div id="active-lists" class="list-grid"></div>
+                        </div>
+                        <div class="inactive-lists">
+                            <h3 class="cyber-title">Inactive Lists</h3>
+                            <div id="inactive-lists" class="list-grid"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <button id="pause-btn" class="neon-button">
+                <span class="button-text">PAUSE</span>
+            </button>
+            <button id="clear-btn" class="neon-button">
+                <span class="button-text">CLEAR LOG</span>
+            </button>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

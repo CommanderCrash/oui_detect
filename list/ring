@@ -1,0 +1,8 @@
+18:7F:88 Ring echo "5|Ring Cam Detected...|[255,0,0]|0.1||0" | nc -U /mnt/ram/sense_hat_socket
+34:3E:A4 Ring echo "5|Ring Cam Detected...|[255,0,0]|0.1||0" | nc -U /mnt/ram/sense_hat_socket
+54:E0:19 Ring echo "5|Ring Cam Detected...|[255,0,0]|0.1||0" | nc -U /mnt/ram/sense_hat_socket
+5C:47:5E Ring echo "5|Ring Cam Detected...|[255,0,0]|0.1||0" | nc -U /mnt/ram/sense_hat_socket
+64:9A:63 Ring echo "5|Ring Cam Detected...|[255,0,0]|0.1||0" | nc -U /mnt/ram/sense_hat_socket
+90:48:6C Ring echo "5|Ring Cam Detected...|[255,0,0]|0.1||0" | nc -U /mnt/ram/sense_hat_socket
+9C:76:13 Ring echo "5|Ring Cam Detected...|[255,0,0]|0.1||0" | nc -U /mnt/ram/sense_hat_socket
+AC:9F:C3 Ring echo "5|Ring Cam Detected...|[255,0,0]|0.1||0" | nc -U /mnt/ram/sense_hat_socket
