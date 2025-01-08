@@ -1,3 +1,0 @@
-00:80:48 EMSA_TFD echo "3|EMSA_or_TFD_Detected |[0,0,234]|0.07|/home/pi/notifications/alert02.mp3|0" | nc -U /mnt/ram/sense_hat_socket && echo "3|0|EMSA or TFD Detected|yellow|black|0.01||0" | nc 192.168.69.154 5555
-04:f0:21 EMSA_TFD echo "3|EMSA_or_TFD_Detected |[0,0,234]|0.07|/home/pi/notifications/alert02.mp3|0" | nc -U /mnt/ram/sense_hat_socket && echo "3|0|EMSA or TFD Detected|yellow|black|0.01||0" | nc 192.168.69.154 5555
-00:40:29 EMSA_TFD echo "3|EMSA or TFD Detected |[0,0,234]|0.07|/home/pi/notifications/alert02.mp3|0" | nc -U /mnt/ram/sense_hat_socket && echo "3|0|EMSA or TFD Detected|yellow|black|0.01||0" | nc 192.168.69.154 5555
