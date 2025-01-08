@@ -1,4 +1,4 @@
-# OUI Detect
+# OUI Detect with webUI on port 5000
 
 A Python tool that detects OUI (Organizationally Unique Identifier) from clients and access points using airodump-ng.
 
@@ -43,6 +43,7 @@ python3 oui-detect.py [-h] -m MAC_LIST [MAC_LIST ...] [-t CAPTURE_TIME] [-c CUST
 ## Example
 
 python3 oui-detect.py -t 20 -m list/drones -2 -5
+runs for 20 seconds using list drones with -2 2.4ghz and -5 5ghz monitoring.
 
 ## List File Structure
 
