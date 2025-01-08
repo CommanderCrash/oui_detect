@@ -49,3 +49,6 @@ runs for 20 seconds using list drones with -2 2.4ghz and -5 5ghz monitoring.
 
 The `list` files should follow this format:
 OUI  Name  Command
+
+change json file loction in script to match your directory:
+LISTS_CONFIG_FILE = '/home/Your_UNAME/oui/lists_config.json'
