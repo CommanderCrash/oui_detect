@@ -22,4 +22,5 @@ optional arguments:
 
 
 python3 oui-detect.py -t 20 -m list/drones -2 -5
-# in "list" | OUI : Name : Command
+"list" structure:
+OUI  Name  Command
