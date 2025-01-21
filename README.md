@@ -1,4 +1,4 @@
-# OUI Detect with webUI on port 5000
+# OUI Detect with webUI
 
 A Python tool that detects OUI (Organizationally Unique Identifier) from clients and access points using airodump-ng.
 
@@ -52,3 +52,5 @@ OUI  Name  Command
 
 change json file loction in script to match your directory:
 LISTS_CONFIG_FILE = '/home/Your_UNAME/oui/lists_config.json'
+
+Go to http://localhost:5000
