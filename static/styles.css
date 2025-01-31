@@ -833,3 +833,127 @@ body {
     justify-content: center;
     gap: 20px;
 }
+
+
+
+/* Settings Panel Styles */
+.settings-panel {
+    padding: 20px;
+    background: var(--panel-bg);
+    border: 1px solid var(--neon-blue);
+}
+
+.settings-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.settings-section {
+    border: 1px solid var(--neon-blue);
+    padding: 15px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.settings-subtitle {
+    color: var(--neon-blue);
+    margin-bottom: 15px;
+    font-size: 1.2em;
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.settings-input {
+    background: var(--panel-bg);
+    border: 1px solid var(--neon-blue);
+    color: var(--text-color);
+    padding: 5px 10px;
+    border-radius: 4px;
+    min-width: 100px;
+}
+
+.channel-section {
+    flex: 1;
+}
+
+.channel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.settings-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+/* Checkbox styling */
+input[type="checkbox"] {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--neon-blue);
+    background: var(--panel-bg);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+input[type="checkbox"]:checked {
+    background: var(--neon-green);  /* Using your neon green variable when checked */
+    border-color: var(--neon-green);
+    position: relative;
+    box-shadow: 0 0 5px var(--neon-green);  /* Adding glow effect when checked */
+}
+
+input[type="checkbox"]:checked::after {
+    content: 'X';
+    color: rgb(255, 0, 0); 
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 12px;
+    font-weight: bold;
+}
+
+input[type="checkbox"]:hover {
+    border-color: var(--neon-green);
+    box-shadow: 0 0 3px var(--neon-green);
+}
+
+/* Small button variant */
+.neon-button.small {
+    padding: 5px 10px;
+    font-size: 0.8em;
+}
+
+.interface-control {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+}
+
+#refresh-interfaces {
+    padding: 5px 8px;
+    font-size: 14px;
+}
+
+#refresh-interfaces:hover {
+    transform: rotate(180deg);
+    transition: transform 0.3s ease;
+}
