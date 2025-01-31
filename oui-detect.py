@@ -17,9 +17,23 @@ import atexit
 import logging
 from logging.config import dictConfig
 import json
+from typing import List, Dict
 
 LISTS_CONFIG_FILE = '/home/pi/oui/lists_config.json'
 
+# Make sure the config directory exists
+os.makedirs(os.path.dirname(LISTS_CONFIG_FILE), exist_ok=True)
+
+SETTINGS_FILE = '/home/pi/oui/settings.json'
+DEFAULT_SETTINGS = {
+    'interface': 'wlan0',
+    'capture_time': 25,
+    'band2G': True,
+    'band5G': True,
+    'channels2G': [1, 6, 11],
+    'channels5G': [44, 52, 100, 149, 157, 161]
+
+}
 
 # Initialize colorama and Flask
 init(autoreset=True)
@@ -46,15 +60,92 @@ ALERT_COOLDOWN = 60
 
 
 def load_lists_config():
-    if os.path.exists(LISTS_CONFIG_FILE):
-        with open(LISTS_CONFIG_FILE, 'r') as f:
-            return json.load(f)
-    return {'active': [], 'inactive': []}
+    """Load lists configuration from file with better error handling"""
+    try:
+        if os.path.exists(LISTS_CONFIG_FILE):
+            with open(LISTS_CONFIG_FILE, 'r') as f:
+                content = f.read().strip()
+                if content:  # Check if file has content
+                    try:
+                        config = json.load(f)
+                        print_status(f"Loaded lists config: {config}", Fore.CYAN)
+                        return config
+                    except json.JSONDecodeError:
+                        print_status("Invalid JSON in config file, creating new config", Fore.YELLOW)
+                else:
+                    print_status("Config file is empty, creating new config", Fore.YELLOW)
+        else:
+            print_status("Config file doesn't exist, creating new config", Fore.YELLOW)
+    except Exception as e:
+        print_status(f"Error accessing config file: {e}", Fore.RED)
+
+    # Create new configuration from current args
+    lists_dir = '/home/pi/oui/list'
+    all_lists = get_all_available_lists()
+    active_lists = [os.path.basename(path) for path in args.mac_list]
+    inactive_lists = list(set(all_lists) - set(active_lists))
+    
+    new_config = {
+        'active': active_lists,
+        'inactive': inactive_lists
+    }
+    
+    # Save the new configuration
+    try:
+        with open(LISTS_CONFIG_FILE, 'w') as f:
+            json.dump(new_config, f, indent=4)
+        print_status("Saved new lists configuration", Fore.WHITE)
+    except Exception as e:
+        print_status(f"Error saving new config: {e}", Fore.RED)
+    
+    return new_config
 
 def save_lists_config(config):
     with open(LISTS_CONFIG_FILE, 'w') as f:
         json.dump(config, f)
 
+def load_settings():
+    """Load settings from file or return defaults"""
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        print_status(f"Error loading settings: {e}", Fore.RED)
+    return DEFAULT_SETTINGS.copy()
+
+def save_settings(settings):
+    """Save settings to file"""
+    try:
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(settings, f, indent=4)
+        return True
+    except Exception as e:
+        print_status(f"Error saving settings: {e}", Fore.RED)
+        return False
+
+def get_wireless_interfaces() -> List[str]:
+    """Get list of available wireless interfaces"""
+    try:
+        result = subprocess.run(['iwconfig'], capture_output=True, text=True)
+        interfaces = []
+        for line in result.stdout.split('\n'):
+            if 'IEEE 802.11' in line:
+                interfaces.append(line.split()[0])
+        return interfaces
+    except Exception as e:
+        print_status(f"Error getting wireless interfaces: {e}", Fore.RED)
+        return ['wlan0']  # Return default if error
+
+def check_interface_status(interface: str) -> Dict[str, bool]:
+    """Check if interface is up and in monitor mode"""
+    try:
+        result = subprocess.run(['iwconfig', interface], capture_output=True, text=True)
+        is_up = 'ESSID' in result.stdout or 'Mode:Monitor' in result.stdout
+        is_monitor = 'Mode:Monitor' in result.stdout
+        return {'isUp': is_up, 'isMonitor': is_monitor}
+    except Exception:
+        return {'isUp': False, 'isMonitor': False}
 
 
 def clear_line():
@@ -109,12 +200,12 @@ def extract_channel(csv_line: str) -> str:
         pass
     return "unknown"
 
-def check_wlan1mon_exists() -> bool:
-    """Check if wlan1mon interface exists and is in monitor mode"""
+def check_wlan0_exists() -> bool:
+    """Check if wlan0 interface exists and is in monitor mode"""
     try:
-        result = subprocess.run(['iwconfig', 'wlan1mon'], capture_output=True, text=True)
+        result = subprocess.run(['iwconfig', 'wlan0'], capture_output=True, text=True)
         if "Mode:Monitor" in result.stdout:
-            print_status("wlan1mon interface exists in monitor mode", Fore.GREEN)
+            print_status("wlan0 interface exists in monitor mode", Fore.GREEN)
             return True
         return False
     except subprocess.CalledProcessError:
@@ -126,12 +217,12 @@ def cleanup_files():
     subprocess.run(['sudo', 'rm', '-f', '/mnt/ram/OUI-Prox-*.csv'], check=True)
     subprocess.run(['sudo', 'rm', '-f', '/mnt/ram/OUI-Prox-*.cap'], check=True)
 
-def setup_interface(interface="wlan1mon"):
+def setup_interface(interface="wlan0"):
     """Setup wireless interface in monitor mode"""
-    if not check_wlan1mon_exists():
+    if not check_wlan0_exists():
         print_status(f"Setting up {interface}...", Fore.YELLOW)
         subprocess.run(['sudo', 'ifconfig', interface, 'down'], check=True)
-        subprocess.run(['sudo', 'airmon-ng', 'start', 'wlan1'], check=True)
+        subprocess.run(['sudo', 'airmon-ng', 'start', 'wlan0'], check=True)
         time.sleep(2)
 
 def find_full_mac(oui: str, csv_content: list) -> str:
@@ -322,28 +413,26 @@ def process_csv(mac_entries: dict):
         print_status(f"Error processing CSV: {e}", Fore.RED)
 
 def process_cleanup(process):
-    """Clean up airodump process with escalating kill signals"""
+    """Clean up airodump process with better error handling"""
     try:
         # First attempt: Normal termination
-        process.terminate()
-        
-        # Second attempt: SIGHUP
         if process.poll() is None:
-            os.kill(process.pid, signal.SIGHUP)
-            
-        # Third attempt: SIGKILL
+            process.terminate()
+            time.sleep(1)
+        
+        # Second attempt: SIGTERM
         if process.poll() is None:
             process.kill()
-            
-        # Final attempt: Kill all remaining airodump processes
-        if process.poll() is None:
-            subprocess.run(['sudo', 'killall', '-9', 'airodump-ng'], check=False)
-            
+            time.sleep(1)
+        
+        # Final attempt: Force kill any remaining processes
+        subprocess.run(['sudo', 'pkill', '-9', '-f', 'airodump-ng'], check=False)
+        
     except Exception as e:
         print_status(f"Error during process cleanup: {e}", Fore.RED)
-    finally:
-        # Double-check for any remaining airodump processes
+        # Ensure processes are killed even if there's an error
         subprocess.run(['sudo', 'pkill', '-9', '-f', 'airodump-ng'], check=False)
+
 
 def get_band_and_channels(args):
     """Determine band mode and channels based on command line arguments"""
@@ -367,74 +456,114 @@ def get_band_and_channels(args):
     return band_mode, ','.join(channels)
 
 def monitoring_loop(args):
-    """Main monitoring loop with airodump configuration display"""
     global stop_flag, is_paused, cycle_count, interface_status, mac_entries
     
-    if not setup_wireless_interface(getattr(args, 'custom_mac', None)):
-        sys.exit(1)
-    
-    band_mode, channels = get_band_and_channels(args)
-    
-    # Display configuration with proper formatting
-    clear_line()
-    print_status("=== Airodump-ng Configuration ===", Fore.CYAN)
-    print_status(f"Band mode: {band_mode}")
-    print_status("Monitored channels:")
-    if args.band_2:
-        print_status("  - 2.4GHz: 1, 6, 11 (main channels)")
-    if args.band_5:
-        print_status("  - 5GHz lower band: 44, 52")
-        print_status("  - 5GHz middle band: 100")
-        print_status("  - 5GHz upper band: 149, 157, 161")
-    print_status(f"Capture time per cycle: {args.capture_time} seconds")
-    print_status("Output format: CSV (stored in /mnt/ram/)")
+    max_retries = 3
+    retry_delay = 5
+    error_count = 0
+    last_error_time = None
     
     while not stop_flag:
         if not is_paused:
             try:
                 cycle_count += 1
-                clear_line()
-                print_status(f"=== Cycle {cycle_count} ===", Fore.CYAN)
+                print_status(f"Starting cycle {cycle_count}", Fore.CYAN)
                 
+                # Load fresh settings for each cycle
+                settings = load_settings()
+                
+                # Verify interface status periodically
                 if cycle_count % 10 == 0:
-                    interface_status = check_wlan1mon_exists()
-                    if not interface_status:
-                        print_status("Warning: wlan1mon interface is down", Fore.RED)
-                        if not restart_wireless_interface():
-                            print_status("Failed to restart wireless interface", Fore.RED)
+                    interface_status = check_interface_status(settings['interface'])
+                    if not interface_status.get('isMonitor', False):
+                        print_status("Interface not in monitor mode, attempting to restore...", Fore.YELLOW)
+                        setup_wireless_interface()
+                        time.sleep(2)
                 
-                if cycle_count % 4000 == 0:
-                    print_status(f"=== Cycle {cycle_count}: Performing wireless interface restart ===", Fore.YELLOW)
-                    restart_wireless_interface()
+                # Build channel list from current settings
+                channels = []
+                if settings['band2G']:
+                    channels.extend(map(str, settings['channels2G']))
+                if settings['band5G']:
+                    channels.extend(map(str, settings['channels5G']))
                 
+                if not channels:
+                    print_status("No channels selected, waiting...", Fore.YELLOW)
+                    time.sleep(5)
+                    continue
+                    
+                channel_str = ','.join(channels)
+                
+                # Clean up before starting new scan
                 cleanup_files()
-                process = subprocess.Popen([
+                subprocess.run(['sudo', 'pkill', '-f', 'airodump-ng'], check=False)
+                time.sleep(1)
+                
+                # Build airodump command
+                cmd = [
                     'sudo', 'airodump-ng',
                     '--output-format', 'csv',
                     '-w', '/mnt/ram/OUI-Prox',
-                    '--band', band_mode,
-                    '-c', channels,
-                    'wlan1mon'
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    '--band', 'abg' if settings['band2G'] and settings['band5G'] else ('a' if settings['band5G'] else 'g'),
+                    '-c', channel_str,
+                    settings['interface']
+                ]
                 
-                time.sleep(args.capture_time)
+                process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                # Monitor the process while waiting
+                start_time = time.time()
+                while time.time() - start_time < settings['capture_time']:
+                    if process.poll() is not None:
+                        raise Exception("airodump-ng process terminated unexpectedly")
+                    time.sleep(1)
+                
                 process_cleanup(process)
                 process_csv(mac_entries)
                 
+                # Reset error count on successful cycle
+                error_count = 0
+                last_error_time = None
+                
             except Exception as e:
-                clear_line()
-                print_status(f"Error in monitoring loop: {e}", Fore.RED)
-                time.sleep(5)
-            
+                error_count += 1
+                current_time = time.time()
+                
+                # If this is a new error after a period of stability, reset the count
+                if last_error_time and current_time - last_error_time > 300:  # 5 minutes
+                    error_count = 1
+                
+                last_error_time = current_time
+                
+                print_status(f"Error in monitoring loop (attempt {error_count}): {e}", Fore.RED)
+                
+                if error_count >= max_retries:
+                    print_status("Multiple errors detected, attempting recovery...", Fore.YELLOW)
+                    try:
+                        # Kill any hanging processes
+                        subprocess.run(['sudo', 'pkill', '-f', 'airodump-ng'], check=False)
+                        cleanup_files()
+                        
+                        # Restart wireless interface
+                        restart_wireless_interface()
+                        
+                        # Reset error count after recovery attempt
+                        error_count = 0
+                        
+                    except Exception as recovery_error:
+                        print_status(f"Recovery failed: {recovery_error}", Fore.RED)
+                
+                time.sleep(retry_delay)
+                
         time.sleep(1)
 
 def restart_wireless_interface():
     """Restart wireless interface"""
     try:
         print_status("Restarting wireless interface...", Fore.YELLOW)
-        subprocess.run(['sudo', 'airmon-ng', 'stop', 'wlan1mon'], check=True)
+        subprocess.run(['sudo', 'airmon-ng', 'stop', 'wlan0'], check=True)
         time.sleep(2)
-        subprocess.run(['sudo', 'airmon-ng', 'start', 'wlan1'], check=True)
+        subprocess.run(['sudo', 'airmon-ng', 'start', 'wlan0'], check=True)
         time.sleep(2)
         print_status("Wireless interface restarted successfully", Fore.GREEN)
         return True
@@ -444,35 +573,35 @@ def restart_wireless_interface():
 
 def setup_wireless_interface(custom_mac: str = None):
     """Setup wireless interface with optional custom MAC"""
-    if check_wlan1mon_exists():
-        print_status("Using existing wlan1mon interface", Fore.GREEN)
+    if check_wlan0_exists():
+        print_status("Using existing wlan0 interface", Fore.GREEN)
         return True
     
     try:
-        # Check if wlan1 exists # main wifi addaper
-        result = subprocess.run(['iwconfig', 'wlan1'], capture_output=True, text=True)
+        # Check if wlan0 exists
+        result = subprocess.run(['iwconfig', 'wlan0'], capture_output=True, text=True)
         if "no such device" in result.stderr.lower():
-            error_msg = "4|Wireless Monitor Mode Failed on wlan1... |red|0.1||0"
+            error_msg = "4|Wireless Monitor Mode Failed on wlan0... |red|0.1||0"
             subprocess.run(['echo', error_msg, '|', 'nc', 'localhost', '5555'], 
                          shell=True)
-            print_status("Error: wlan1mon interface not found", Fore.RED)
+            print_status("Error: wlan0 interface not found", Fore.RED)
             return False
 
         # Setup monitor mode
         print_status("Setting up monitor mode...", Fore.CYAN)
-        subprocess.run(['sudo', 'airmon-ng', 'start', 'wlan1'], check=True)
+        subprocess.run(['sudo', 'airmon-ng', 'start', 'wlan0'], check=True)
         time.sleep(2)
 
         if custom_mac:
-            subprocess.run(['sudo', 'ifconfig', 'wlan1', 'down'], check=True)
-            subprocess.run(['sudo', 'macchanger', '-m', custom_mac, 'wlan1'], check=True)
+            subprocess.run(['sudo', 'ifconfig', 'wlan0', 'down'], check=True)
+            subprocess.run(['sudo', 'macchanger', '-m', custom_mac, 'wlan0'], check=True)
         
-        subprocess.run(['sudo', 'ifconfig', 'wlan1', 'up'], check=True)
+        subprocess.run(['sudo', 'ifconfig', 'wlan0', 'up'], check=True)
         print_status("Monitor mode setup complete", Fore.GREEN)
         return True
 
     except subprocess.CalledProcessError as e:
-        error_msg = "4|Wireless Monitor Mode Failed on wlan1... |red|0.1||1"
+        error_msg = "4|Wireless Monitor Mode Failed on wlan0... |red|0.1||1"
         subprocess.run(['echo', error_msg, '|', 'nc', 'localhost', '5555'], 
                      shell=True)
         print_status(f"Error setting up wireless interface: {e}", Fore.RED)
@@ -526,18 +655,109 @@ def initialize_lists_config():
     # Create inactive lists (all lists minus active ones)
     inactive_lists = list(set(all_lists) - set(active_lists))
     
-    # Save configuration
+    # Create new configuration
     config = {
         'active': active_lists,
         'inactive': inactive_lists
     }
+    
+    # Save configuration to file
     save_lists_config(config)
+    
+    print_status(f"Active lists: {active_lists}", Fore.GREEN)
     return config
 
 # Flask routes
+
+@app.route('/api/debug/lists', methods=['GET'])
+def debug_lists():
+    """Debug endpoint to check current list state"""
+    try:
+        config = load_lists_config()
+        current_active = [os.path.basename(path) for path in args.mac_list]
+        
+        return jsonify({
+            'config_file': config,
+            'current_active': current_active,
+            'args_mac_list': args.mac_list,
+            'all_lists': get_all_available_lists()
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
 @app.route('/')
 def index():
     return send_from_directory('static', 'index.html')
+
+@app.route('/api/apply-interface', methods=['POST'])
+def apply_interface():
+    """Apply interface settings only"""
+    try:
+        new_settings = request.json
+        current_settings = load_settings()
+        
+        # Update only interface settings
+        current_settings['interface'] = new_settings['interface']
+        
+        if save_settings(current_settings):
+            # Restart wireless interface
+            if restart_wireless_interface():
+                return jsonify({'status': 'success'})
+            return jsonify({'status': 'error', 'message': 'Failed to restart interface'})
+        return jsonify({'status': 'error', 'message': 'Failed to save settings'})
+    except Exception as e:
+        print_status(f"Error applying interface settings: {e}", Fore.RED)
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/api/apply-scan', methods=['POST'])
+def apply_scan():
+    """Apply scan settings only"""
+    global stop_flag, args
+    try:
+        new_settings = request.json
+        print_status(f"Received scan settings: {new_settings}", Fore.CYAN)
+        
+        # Load current settings
+        current_settings = load_settings()
+        print_status(f"Current settings before update: {current_settings}", Fore.CYAN)
+        
+        # Update scan settings
+        current_settings.update({
+            'capture_time': new_settings['captureTime'],
+            'band2G': new_settings['band2G'],
+            'band5G': new_settings['band5G'],
+            'channels2G': [int(ch) for ch in new_settings['channels2G']],
+            'channels5G': [int(ch) for ch in new_settings['channels5G']]
+        })
+        
+        print_status(f"Updated settings to save: {current_settings}", Fore.YELLOW)
+        
+        # Save the settings
+        if save_settings(current_settings):
+            # Update args to match new settings
+            args.capture_time = current_settings['capture_time']
+            args.band_2 = current_settings['band2G']
+            args.band_5 = current_settings['band5G']
+            
+            # Stop current monitoring
+            stop_flag = True
+            time.sleep(2)
+            
+            # Cleanup any running processes
+            subprocess.run(['sudo', 'pkill', '-f', 'airodump-ng'], check=False)
+            cleanup_files()
+            
+            # Restart monitoring
+            stop_flag = False
+            print_status("Scan settings applied successfully", Fore.GREEN)
+            return jsonify({'status': 'success'})
+        
+        return jsonify({'status': 'error', 'message': 'Failed to save settings'})
+        
+    except Exception as e:
+        stop_flag = False
+        print_status(f"Error applying scan settings: {e}", Fore.RED)
+        return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/api/initial-config')
 def get_initial_config():
@@ -576,9 +796,19 @@ def static_files(path):
 @app.route('/api/status')
 def get_status():
     global cycle_count, interface_status
+    current_settings = load_settings()
+    
+    # Get actual scanning channels
+    channels = {
+        '2.4GHz': current_settings['channels2G'] if current_settings['band2G'] else [],
+        '5GHz': current_settings['channels5G'] if current_settings['band5G'] else []
+    }
+    
     return jsonify({
         'cycle_count': cycle_count,
-        'interface_status': interface_status
+        'interface_status': interface_status,
+        'channels': channels,
+        'capture_time': current_settings['capture_time']
     })
 
 @app.route('/api/devices')
@@ -669,21 +899,39 @@ def add_device():
         data = request.json
         mac = data['mac']
         name = data['name'].strip()
+        list_name = data['list']
         
-        # Create the command with properly escaped quotes
-        msg_command = f'echo "2|{name} Detected |[255,0,0]|0.1|/home/pi/notifications/alert04.mp3 nc -U /mnt/ram/sense_hat_socket'
+        lists_dir = '/home/pi/oui/list'
+        list_path = os.path.join(lists_dir, list_name)
         
-        # Create the entry with the name in quotes and the command
+        # Create the command
+        msg_command = f'echo "2|0| {name} Detected |red|black|0.07||0" | nc -U /mnt/ram/message_socket'
+        
+        # Create the entry
         entry = f'{mac} "{name}" {msg_command}\n'
         
-        list_name = data['list']
-        list_path = os.path.join('/home/pi/oui/list', list_name)
-        
+        # Add the entry to the list file
         with open(list_path, 'a') as f:
             print_status(f"Adding entry: {entry.strip()}", Fore.GREEN)
             f.write(entry)
         
-        # Reload MAC list after adding new device
+        # Make sure the list is active
+        config = load_lists_config()
+        active_lists = set(config.get('active', []))
+        active_lists.add(list_name)
+        
+        # Update configuration
+        all_lists = set(get_all_available_lists())
+        new_config = {
+            'active': list(active_lists),
+            'inactive': list(all_lists - active_lists)
+        }
+        save_lists_config(new_config)
+        
+        # Update args.mac_list
+        args.mac_list = [os.path.join(lists_dir, name) for name in active_lists]
+        
+        # Reload MAC entries
         mac_entries = read_mac_list(args.mac_list)
         
         return jsonify({'status': 'success'})
@@ -716,11 +964,12 @@ def create_list():
 
 @app.route('/api/config')
 def get_config():
+    """Return the current configuration including actual capture time from args"""
     band_mode, channels = get_band_and_channels(args)
     channels_list = channels.split(',')
     
     config = {
-        'capture_time': args.capture_time,
+        'capture_time': args.capture_time,  # Use the actual capture time from args
         'band_mode': band_mode,
         'channels': {
             '2.4GHz': [1, 6, 11] if args.band_2 else [],
@@ -728,6 +977,21 @@ def get_config():
         }
     }
     return jsonify(config)
+
+@app.route('/api/current-settings', methods=['GET'])
+def get_current_settings():
+    """Get current settings"""
+    try:
+        settings = load_settings()
+        return jsonify({
+            'status': 'success',
+            'settings': settings
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        })
 
 @app.route('/api/remove-device', methods=['POST'])
 def remove_device():
@@ -787,28 +1051,23 @@ def remove_device():
 def get_lists_status():
     try:
         lists_dir = '/home/pi/oui/list'
-        all_lists = [f for f in os.listdir(lists_dir) if os.path.isfile(os.path.join(lists_dir, f))]
+        all_lists = get_all_available_lists()
         
-        config = load_lists_config()
+        # Get the current list paths from args
+        current_active = [os.path.basename(path) for path in args.mac_list]
         
-        # Ensure all lists are accounted for
-        active_lists = set(config.get('active', []))
-        existing_lists = set(all_lists)
-        
-        # Add new lists to inactive by default
-        inactive_lists = existing_lists - active_lists
-        
-        # Remove non-existent lists from active
-        active_lists = active_lists & existing_lists
-        
-        # Save updated configuration
+        # Create new config based on current state
         config = {
-            'active': list(active_lists),
-            'inactive': list(inactive_lists)
+            'active': current_active,
+            'inactive': list(set(all_lists) - set(current_active))
         }
+        
+        # Save the current state
         save_lists_config(config)
         
+#        print_status(f"Current active lists: {current_active}", Fore.GREEN)
         return jsonify(config)
+        
     except Exception as e:
         print_status(f"Error getting lists status: {e}", Fore.RED)
         return jsonify({'status': 'error', 'message': str(e)})
@@ -823,33 +1082,174 @@ def toggle_list():
         if not list_name:
             return jsonify({'status': 'error', 'message': 'List name required'})
             
+        lists_dir = '/home/pi/oui/list'
+        list_path = os.path.join(lists_dir, list_name)
+        
+        # Verify the list file exists
+        if not os.path.isfile(list_path):
+            return jsonify({'status': 'error', 'message': f'List file {list_name} not found'})
+        
+        # Load current config
         config = load_lists_config()
         active_lists = set(config.get('active', []))
         
+        # Update active lists based on the action
         if active:
             active_lists.add(list_name)
         else:
             active_lists.discard(list_name)
         
-        # Update mac_entries with only active lists
-        global mac_entries, args
-        active_list_paths = [os.path.join('/home/pi/oui/list', name) for name in active_lists]
-        args.mac_list = active_list_paths
+        # Get all available lists
+        all_lists = set(get_all_available_lists())
+        
+        # Update args.mac_list with full paths
+        global args, mac_entries
+        args.mac_list = [os.path.join(lists_dir, name) for name in active_lists]
+        
+        # Save the new configuration
+        new_config = {
+            'active': list(active_lists),
+            'inactive': list(all_lists - active_lists)
+        }
+        save_lists_config(new_config)
+        
+        # Reload MAC entries
         mac_entries = read_mac_list(args.mac_list)
         
-        # Save configuration
-        lists_dir = '/home/pi/oui/list'
-        all_lists = [f for f in os.listdir(lists_dir) if os.path.isfile(os.path.join(lists_dir, f))]
-        config = {
-            'active': list(active_lists),
-            'inactive': list(set(all_lists) - active_lists)
-        }
-        save_lists_config(config)
+        print_status(f"Lists updated - Active: {active_lists}", Fore.GREEN)
         
-        return jsonify({'status': 'success'})
+        return jsonify({
+            'status': 'success',
+            'active': list(active_lists),
+            'inactive': list(all_lists - active_lists)
+        })
+        
     except Exception as e:
         print_status(f"Error toggling list: {e}", Fore.RED)
         return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    """Get current settings"""
+    settings = load_settings()
+    interfaces = get_wireless_interfaces()
+    return jsonify({
+        'settings': settings,
+        'interfaces': interfaces
+    })
+
+@app.route('/api/apply-settings', methods=['POST'])
+def apply_settings():
+    """Apply new settings"""
+    global stop_flag
+    try:
+        new_settings = request.json
+        print_status(f"Received settings: {new_settings}", Fore.CYAN)
+        
+        # Validate settings
+        if new_settings['captureTime'] < 1:
+            return jsonify({'status': 'error', 'message': 'Capture time must be at least 1 second'})
+        
+        # Convert settings to the correct format
+        settings_to_save = {
+            'interface': new_settings['interface'],
+            'capture_time': new_settings['captureTime'],
+            'band2G': new_settings['band2G'],
+            'band5G': new_settings['band5G'],
+            'channels2G': [int(ch) for ch in new_settings['channels2G']],
+            'channels5G': [int(ch) for ch in new_settings['channels5G']]
+        }
+        
+        if not settings_to_save['band2G'] and not settings_to_save['band5G']:
+            return jsonify({'status': 'error', 'message': 'At least one band must be enabled'})
+        
+        if settings_to_save['band2G'] and not settings_to_save['channels2G']:
+            return jsonify({'status': 'error', 'message': 'Must select at least one 2.4GHz channel when band is enabled'})
+        
+        if settings_to_save['band5G'] and not settings_to_save['channels5G']:
+            return jsonify({'status': 'error', 'message': 'Must select at least one 5GHz channel when band is enabled'})
+        
+        print_status("Saving new settings...", Fore.YELLOW)
+        if not save_settings(settings_to_save):
+            return jsonify({'status': 'error', 'message': 'Failed to save settings to file'})
+        
+        # Update global args
+        global args
+        args.capture_time = settings_to_save['capture_time']
+        args.band_2 = settings_to_save['band2G']
+        args.band_5 = settings_to_save['band5G']
+        
+        # Pause monitoring temporarily
+        stop_flag = True
+        time.sleep(1)
+        
+        # Restart wireless interface with new settings
+        if restart_wireless_interface():
+            stop_flag = False
+            print_status("Settings applied successfully", Fore.GREEN)
+            return jsonify({'status': 'success'})
+        else:
+            stop_flag = False
+            return jsonify({'status': 'error', 'message': 'Failed to restart wireless interface'})
+            
+    except Exception as e:
+        print_status(f"Error applying settings: {e}", Fore.RED)
+        stop_flag = False
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/api/reset-settings', methods=['GET'])
+def reset_settings():
+    """Reset settings to defaults"""
+    try:
+        if save_settings(DEFAULT_SETTINGS):
+            global args
+            args.capture_time = DEFAULT_SETTINGS['capture_time']
+            args.band_2 = DEFAULT_SETTINGS['band2G']
+            args.band_5 = DEFAULT_SETTINGS['band5G']
+            
+            stop_flag = True
+            time.sleep(1)
+            restart_wireless_interface()
+            time.sleep(2)
+            stop_flag = False
+            
+            return jsonify({'status': 'success'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to reset settings'})
+    except Exception as e:
+        print_status(f"Error resetting settings: {e}", Fore.RED)
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/api/toggle-interface', methods=['POST'])
+def toggle_interface():
+    """Toggle interface up/down"""
+    try:
+        data = request.json
+        interface = data.get('interface', 'wlan0')
+        action = data.get('action', 'up')
+        
+        if action not in ['up', 'down']:
+            return jsonify({'status': 'error', 'message': 'Invalid action'})
+        
+        # Bring interface down/up
+        subprocess.run(['sudo', 'ifconfig', interface, action], check=True)
+        
+        if action == 'up':
+            # Put interface in monitor mode
+            subprocess.run(['sudo', 'airmon-ng', 'start', interface], check=True)
+            time.sleep(2)
+        
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        print_status(f"Error toggling interface: {e}", Fore.RED)
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/api/interface-status', methods=['GET'])
+def get_interface_status():
+    """Get current interface status"""
+    settings = load_settings()
+    interface = settings.get('interface', 'wlan0')
+    return jsonify(check_interface_status(interface))
 
 # Set Flask logging level
 app.logger.setLevel(logging.ERROR)
