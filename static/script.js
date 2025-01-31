@@ -61,10 +61,9 @@ async function loadInitialConfig() {
         inactiveLists = new Set(data.lists.inactive);
         updateListDisplays();
         
-        // Update other configuration
+        // Update configuration display
         if (data.config) {
-            document.getElementById('capture-time').textContent = data.config.capture_time;
-            updateChannelDisplay(data.config.channels);
+            updateConfigDisplay(data.config);
         }
     } catch (error) {
         console.error('Error loading initial configuration:', error);
@@ -72,9 +71,198 @@ async function loadInitialConfig() {
     }
 }
 
+async function initializeSettings() {
+    try {
+        // Fetch current settings
+        const response = await fetch('/api/current-settings');
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            const settings = data.settings;
+            
+            // Update interface select
+            const interfaceSelect = document.getElementById('interface-select');
+            if (interfaceSelect) {
+                interfaceSelect.value = settings.interface;
+            }
+            
+            // Update capture time
+            const captureTimeInput = document.getElementById('capture-time-input');
+            if (captureTimeInput) {
+                captureTimeInput.value = settings.capture_time;
+            }
+            
+            // Update band checkboxes
+            const band2g = document.getElementById('band-2ghz');
+            const band5g = document.getElementById('band-5ghz');
+            if (band2g) band2g.checked = settings.band2G;
+            if (band5g) band5g.checked = settings.band5G;
+            
+            // Initialize channel grids
+            const channels2G = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+            const channels5G = [36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 149, 153, 157, 161, 165];
+            
+            const grid2G = document.getElementById('channels-2ghz');
+            const grid5G = document.getElementById('channels-5ghz');
+            
+            if (grid2G && grid5G) {
+                grid2G.innerHTML = '';
+                grid5G.innerHTML = '';
+                
+                channels2G.forEach(channel => {
+                    const div = document.createElement('div');
+                    div.className = 'channel-checkbox';
+                    div.innerHTML = `
+                        <input type="checkbox" id="ch-2g-${channel}" value="${channel}"
+                               ${settings.channels2G.includes(channel) ? 'checked' : ''}>
+                        <label for="ch-2g-${channel}">${channel}</label>
+                    `;
+                    grid2G.appendChild(div);
+                });
+                
+                channels5G.forEach(channel => {
+                    const div = document.createElement('div');
+                    div.className = 'channel-checkbox';
+                    div.innerHTML = `
+                        <input type="checkbox" id="ch-5g-${channel}" value="${channel}"
+                               ${settings.channels5G.includes(channel) ? 'checked' : ''}>
+                        <label for="ch-5g-${channel}">${channel}</label>
+                    `;
+                    grid5G.appendChild(div);
+                });
+            }
+            
+            // Update grid opacity based on band selection
+            if (grid2G) grid2G.style.opacity = settings.band2G ? '1' : '0.5';
+            if (grid5G) grid5G.style.opacity = settings.band5G ? '1' : '0.5';
+        }
+    } catch (error) {
+        console.error('Error initializing settings:', error);
+        showNotification('Failed to load settings', 'error');
+
+    }
+    document.getElementById('interface-apply').addEventListener('click', applyInterfaceSettings);
+    document.getElementById('scan-apply').addEventListener('click', applyScanSettings);
+    document.getElementById('settings-reset').addEventListener('click', resetSettings);
+}
+
+
+async function loadWirelessInterfaces() {
+    try {
+        const response = await fetch('/api/settings');
+        const data = await response.json();
+        
+        const interfaceSelect = document.getElementById('interface-select');
+        if (interfaceSelect) {
+            interfaceSelect.innerHTML = ''; // Clear existing options
+            
+            // Add available interfaces
+            if (data.interfaces && data.interfaces.length > 0) {
+                data.interfaces.forEach(iface => {
+                    const option = document.createElement('option');
+                    option.value = iface;
+                    option.textContent = iface;
+                    interfaceSelect.appendChild(option);
+                });
+                
+                // Set current interface if it exists in settings
+                if (data.settings && data.settings.interface) {
+                    interfaceSelect.value = data.settings.interface;
+                }
+            } else {
+                // Add a placeholder if no interfaces found
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'No wireless interfaces found';
+                option.disabled = true;
+                interfaceSelect.appendChild(option);
+            }
+        }
+        
+        // Add refresh button listener
+        const refreshBtn = document.getElementById('refresh-interfaces');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', async () => {
+                await loadWirelessInterfaces();
+                showNotification('Wireless interfaces refreshed');
+            });
+        }
+    } catch (error) {
+        console.error('Error loading wireless interfaces:', error);
+        showNotification('Failed to load wireless interfaces', 'error');
+    }
+}
+
+async function applyInterfaceSettings() {
+    try {
+        const settings = {
+            interface: document.getElementById('interface-select')?.value || 'wlan0'
+        };
+
+        const response = await fetch('/api/apply-interface', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+        });
+        
+        if (!response.ok) throw new Error('Network response was not ok');
+        
+        const result = await response.json();
+        if (result.status === 'success') {
+            showNotification('Interface settings applied successfully');
+        } else {
+            showNotification(result.message || 'Failed to apply interface settings', 'error');
+        }
+    } catch (error) {
+        console.error('Error applying interface settings:', error);
+        showNotification('Failed to apply interface settings', 'error');
+    }
+}
+
+async function applyScanSettings() {
+    try {
+        // Get the settings
+        const settings = {
+            captureTime: parseInt(document.getElementById('capture-time-input')?.value || '13'),
+            band2G: document.getElementById('band-2ghz')?.checked || false,
+            band5G: document.getElementById('band-5ghz')?.checked || false,
+            channels2G: Array.from(document.getElementById('channels-2ghz')?.querySelectorAll('input:checked') || [])
+                .map(cb => cb.value),
+            channels5G: Array.from(document.getElementById('channels-5ghz')?.querySelectorAll('input:checked') || [])
+                .map(cb => cb.value)
+        };
+
+        // Debug log
+        console.log('Sending scan settings:', settings);
+
+        const response = await fetch('/api/apply-scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+        });
+        
+        const result = await response.json();
+        console.log('Server response:', result);  // Debug log
+        
+        if (result.status === 'success') {
+            showNotification('Scan settings applied successfully');
+            // Force immediate updates
+            await updateStatus();
+            await updateChannelDisplay();
+        } else {
+            showNotification(result.message || 'Failed to apply scan settings', 'error');
+        }
+    } catch (error) {
+        console.error('Error applying scan settings:', error);
+        showNotification('Failed to apply scan settings. Check console for details.', 'error');
+    }
+}
+
 async function updateListDisplays() {
     const activeContainer = document.getElementById('active-lists');
     const inactiveContainer = document.getElementById('inactive-lists');
+    
+    if (!activeContainer || !inactiveContainer) return;
     
     activeContainer.innerHTML = '';
     inactiveContainer.innerHTML = '';
@@ -119,6 +307,7 @@ async function toggleListStatus(listName, currentlyActive) {
         
         const data = await response.json();
         if (data.status === 'success') {
+            // Update the local Sets
             if (currentlyActive) {
                 activeLists.delete(listName);
                 inactiveLists.add(listName);
@@ -126,10 +315,15 @@ async function toggleListStatus(listName, currentlyActive) {
                 inactiveLists.delete(listName);
                 activeLists.add(listName);
             }
-            updateListDisplays();
+            
+            // Update the display
+            await updateListDisplays();
             showNotification(`List ${listName} ${currentlyActive ? 'deactivated' : 'activated'}`);
+            
+            // Force a refresh of the lists display
+            await fetchListStatus();
         } else {
-            showNotification(data.message, 'error');
+            showNotification(data.message || 'Failed to toggle list status', 'error');
         }
     } catch (error) {
         console.error('Error toggling list status:', error);
@@ -142,14 +336,18 @@ async function fetchListStatus() {
         const response = await fetch('/api/lists-status');
         const data = await response.json();
         
-        activeLists = new Set(data.active);
-        inactiveLists = new Set(data.inactive);
-        updateListDisplays();
+        console.log('Lists status:', data); // Add debug logging
+        
+        activeLists = new Set(data.active || []);
+        inactiveLists = new Set(data.inactive || []);
+        
+        await updateListDisplays();
     } catch (error) {
         console.error('Error fetching list status:', error);
         showNotification('Failed to fetch list status', 'error');
     }
 }
+
 
 
 // Style for status dot
@@ -624,19 +822,40 @@ function hasChanges(newLogs) {
 async function updateStatus() {
     try {
         const response = await fetch('/api/status');
+        if (!response.ok) return;
+        
         const data = await response.json();
         
+        // Update cycle count
         serverCycleCount = data.cycle_count;
         cycleCounter.textContent = serverCycleCount.toString().padStart(5, '0');
         
+        // Update interface status
         const statusDot = document.querySelector('.status-dot');
         const statusText = document.querySelector('.status-text');
         
-        statusDot.className = `status-dot ${data.interface_status ? 'active' : 'inactive'}`;
-        statusText.textContent = data.interface_status ? 'ACTIVE' : 'DOWN';
+        if (statusDot && statusText) {
+            statusDot.className = `status-dot ${data.interface_status ? 'active' : 'inactive'}`;
+            statusText.textContent = data.interface_status ? 'ACTIVE' : 'DOWN';
+        }
+
+        // Update channel display
+        const channelInfo = document.getElementById('channel-info');
+        if (channelInfo) {
+            let channelText = [];
+            if (data.channels['2.4GHz'].length > 0) {
+                channelText.push(`2.4GHz: ${data.channels['2.4GHz'].sort((a,b) => a-b).join(',')}`);
+            }
+            if (data.channels['5GHz'].length > 0) {
+                channelText.push(`5GHz: ${data.channels['5GHz'].sort((a,b) => a-b).join(',')}`);
+            }
+            channelInfo.textContent = channelText.join(' | ') || 'No channels selected';
+        }
         
-        if (!data.interface_status) {
-            showNotification('Warning: Wireless interface is down', 'error');
+        // Update capture time display
+        const captureTimeElement = document.getElementById('capture-time');
+        if (captureTimeElement) {
+            captureTimeElement.textContent = data.capture_time;
         }
     } catch (error) {
         console.error('Error updating status:', error);
@@ -750,35 +969,241 @@ function closeNewListDialog() {
     }
 }
 
+function initializeSettings() {
+    // Initialize channel grids
+    const channels2G = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    const channels5G = [36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 149, 153, 157, 161, 165];
+    loadWirelessInterfaces();
+    
+    const grid2G = document.getElementById('channels-2ghz');
+    const grid5G = document.getElementById('channels-5ghz');
+    
+    if (!grid2G || !grid5G) {
+        console.error('Channel grid elements not found');
+        return;
+    }
+    
+    grid2G.innerHTML = '';  // Clear existing content
+    grid5G.innerHTML = '';  // Clear existing content
+    
+    channels2G.forEach(channel => {
+        const div = document.createElement('div');
+        div.className = 'channel-checkbox';
+        div.innerHTML = `
+            <input type="checkbox" id="ch-2g-${channel}" value="${channel}">
+            <label for="ch-2g-${channel}">${channel}</label>
+        `;
+        grid2G.appendChild(div);
+    });
+    
+    channels5G.forEach(channel => {
+        const div = document.createElement('div');
+        div.className = 'channel-checkbox';
+        div.innerHTML = `
+            <input type="checkbox" id="ch-5g-${channel}" value="${channel}">
+            <label for="ch-5g-${channel}">${channel}</label>
+        `;
+        grid5G.appendChild(div);
+    });
+
+    // Set default channels
+    [1, 6, 11].forEach(ch => {
+        const checkbox = document.getElementById(`ch-2g-${ch}`);
+        if (checkbox) checkbox.checked = true;
+    });
+    
+    [44, 52, 100, 149, 157, 161].forEach(ch => {
+        const checkbox = document.getElementById(`ch-5g-${ch}`);
+        if (checkbox) checkbox.checked = true;
+    });
+
+    // Add event listeners for settings controls
+    const band2g = document.getElementById('band-2ghz');
+    const band5g = document.getElementById('band-5ghz');
+    const scanApplyBtn = document.getElementById('scan-apply');
+    
+    if (band2g) {
+        band2g.addEventListener('change', function() {
+            const grid = document.getElementById('channels-2ghz');
+            if (grid) grid.style.opacity = this.checked ? '1' : '0.5';
+        });
+    }
+    
+    if (band5g) {
+        band5g.addEventListener('change', function() {
+            const grid = document.getElementById('channels-5ghz');
+            if (grid) grid.style.opacity = this.checked ? '1' : '0.5';
+        });
+    }
+    
+    if (scanApplyBtn) {
+        scanApplyBtn.addEventListener('click', applyScanSettings);
+    }
+
+    // Interface control listeners
+    const interfaceApplyBtn = document.getElementById('interface-apply');
+    if (interfaceApplyBtn) {
+        interfaceApplyBtn.addEventListener('click', applyInterfaceSettings);
+    }
+
+    // Reset button listener
+    const resetBtn = document.getElementById('settings-reset');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', resetSettings);
+    }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    // Remove existing buttons if any
     const controlGroup = document.querySelector('.control-group');
-    controlGroup.innerHTML = '';
+    if (controlGroup) controlGroup.innerHTML = '';
     
-    // Add control buttons
     addControlButtons();
-    
-    // Setup other functionality
     setupContextMenu();
     updateDeviceList();
     updateStatusIndicators();
+    updateConfigInfo();
     
-    // Add event listener for scroll position
-    deviceList.addEventListener('scroll', checkScrollPosition);
+    const deviceList = document.getElementById('device-list');
+    if (deviceList) {
+        deviceList.addEventListener('scroll', checkScrollPosition);
+    }
+
+    initializeTabs();
+    initializeSettings(); // Add this line
+    fetchListStatus();
+    loadInitialConfig();
+
+    // Add periodic updates
+    setInterval(fetchListStatus, 30000);
+    setInterval(updateStatus, 2000);
+    setInterval(updateDeviceList, 2000);
+    setInterval(updateConfigInfo, 30000);
 });
 
-function updateConfigInfo() {
-    fetch('/api/config')
-        .then(response => response.json())
-        .then(config => {
-            document.getElementById('capture-time').textContent = config.capture_time;
-            updateChannelDisplay(config.channels);
-        })
-        .catch(error => {
-            console.error('Error fetching config:', error);
-            showNotification('Failed to update configuration', 'error');
+
+async function applySettings() {
+    try {
+        const settings = {
+            interface: document.getElementById('interface-select')?.value || 'wlan0',
+            captureTime: parseInt(document.getElementById('capture-time-input')?.value || '13'),
+            band2G: document.getElementById('band-2ghz')?.checked || false,
+            band5G: document.getElementById('band-5ghz')?.checked || false,
+            channels2G: Array.from(document.getElementById('channels-2ghz')?.querySelectorAll('input:checked') || [])
+                .map(cb => parseInt(cb.value)),
+            channels5G: Array.from(document.getElementById('channels-5ghz')?.querySelectorAll('input:checked') || [])
+                .map(cb => parseInt(cb.value))
+        };
+
+        const response = await fetch('/api/apply-settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
         });
+        
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        
+        const result = await response.json();
+        if (result.status === 'success') {
+            showNotification('Settings applied successfully. Restarting service...');
+            await updateChannelDisplay();
+            setTimeout(() => window.location.reload(), 5000);
+        } else if (result.message) {
+            showNotification(result.message, 'error');
+        }
+    } catch (error) {
+        console.error('Error applying settings:', error);
+        showNotification('Failed to apply settings. Please try again.', 'error');
+    }
+}
+
+async function resetSettings() {
+    try {
+        const response = await fetch('/api/reset-settings');
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            showNotification('Settings reset to defaults');
+            setTimeout(() => window.location.reload(), 2000);
+        } else {
+            showNotification('Failed to reset settings', 'error');
+        }
+    } catch (error) {
+        showNotification('Error resetting settings', 'error');
+        console.error('Error:', error);
+    }
+}
+
+async function toggleInterface(action) {
+    const interface = document.getElementById('interface-select')?.value || 'wlan0';
+    try {
+        const response = await fetch('/api/toggle-interface', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ interface, action })
+        });
+        
+        const result = await response.json();
+        if (result.status === 'success') {
+            showNotification(`Interface ${interface} ${action === 'up' ? 'enabled' : 'disabled'}`);
+            updateInterfaceStatus();
+        } else {
+            showNotification(result.message || `Failed to ${action} interface`, 'error');
+        }
+    } catch (error) {
+        showNotification(`Error toggling interface ${interface}`, 'error');
+        console.error('Error:', error);
+    }
+}
+
+async function updateChannelDisplay() {
+    try {
+        const response = await fetch('/api/current-settings');
+        if (!response.ok) return; // Silently fail if request fails
+        
+        const data = await response.json();
+        if (data.status === 'success') {
+            const settings = data.settings;
+            const channelInfo = document.getElementById('channel-info');
+            if (!channelInfo) return;
+            
+            let channelText = [];
+            
+            if (settings.band2G && settings.channels2G.length > 0) {
+                channelText.push(`2.4GHz: ${settings.channels2G.sort((a,b) => a-b).join(',')}`);
+            }
+            
+            if (settings.band5G && settings.channels5G.length > 0) {
+                channelText.push(`5GHz: ${settings.channels5G.sort((a,b) => a-b).join(',')}`);
+            }
+            
+            channelInfo.textContent = channelText.join(' | ') || 'No channels selected';
+        }
+    } catch (error) {
+        console.error('Error updating channel display:', error);
+        // Don't show notification for update errors
+    }
+}
+
+async function updateConfigInfo() {
+    try {
+        const response = await fetch('/api/config');
+        const config = await response.json();
+        updateConfigDisplay(config);
+    } catch (error) {
+        console.error('Error fetching config:', error);
+        showNotification('Failed to update configuration', 'error');
+    }
+}
+
+function updateConfigDisplay(config) {
+    // Update capture time display
+    const captureTimeElement = document.getElementById('capture-time');
+    if (captureTimeElement) {
+        captureTimeElement.textContent = config.capture_time;
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -813,7 +1238,6 @@ setInterval(updateStatus, 2000);
 setInterval(updateDeviceList, 2000);
 setInterval(updateConfigInfo, 30000); 
 
-
 // Window Event Handlers
 window.addEventListener('focus', () => {
     updateDeviceList();
@@ -837,3 +1261,4 @@ window.addEventListener('beforeunload', () => {
         fetch('/api/pause', { method: 'POST' });
     }
 });
+
