@@ -15,7 +15,7 @@
         <div class="cyber-panel">
             <div class="header-content">
                 <h1 id="sense" class="cyber-title">Digital Tension WiFi</h1>
-		<h1 id="sense" class="cyber-title">Wizardmon</h1>
+		<h1 id="sense" class="cyber-title">DevimonX</h1>
                 <div class="status-info">
                     <div class="status-item">
                         <span class="status-label">STATUS:</span>
@@ -37,7 +37,9 @@
         <div class="tab-navigation">
             <button class="tab-button active" data-tab="devices">DETECTED DEVICES</button>
             <button class="tab-button" data-tab="lists">LISTS</button>
+            <button class="tab-button" data-tab="settings">SETTINGS</button>
         </div>
+
 
         <div class="main-content" role="main">
             <!-- Devices Tab -->
@@ -46,6 +48,70 @@
                         <div class="config-item">Capture Time: <span id="capture-time">13</span>s per cycle</div>
                     </div>
 
+<!-- Settings Tab -->
+<div id="settings-tab" class="tab-content">
+    <div class="cyber-panel settings-panel">
+        <div class="settings-container">
+            <h3 class="cyber-title">System Settings</h3>
+            
+            <!-- Interface Settings -->
+            <div class="settings-section">
+                <h4 class="settings-subtitle">Interface Control</h4>
+                <div class="settings-row">
+                    <label>Wireless Interface:</label>
+                    <div class="interface-control">
+                        <select id="interface-select" class="settings-input"></select>
+                        <button id="refresh-interfaces" class="neon-button small">
+                            <span class="button-text">ðŸ”§</span>
+                        </button>
+                    </div>
+                    <button id="interface-up" class="neon-button small">UP</button>
+                    <button id="interface-down" class="neon-button small danger">DOWN</button>
+                </div>
+                <div class="settings-actions">
+                    <button id="interface-apply" class="neon-button">APPLY INTERFACE</button>
+                </div>
+            </div>
+
+            <!-- Scan Settings -->
+            <div class="settings-section">
+                <h4 class="settings-subtitle">Scan Configuration</h4>
+                <div class="settings-row">
+                    <label>Capture Time (seconds):</label>
+                    <input type="number" id="capture-time-input" class="settings-input" min="1" value="13">
+                </div>
+                
+                <!-- Band Selection -->
+                <div class="settings-row">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="band-2ghz" checked>
+                        <label for="band-2ghz">2.4GHz Band</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="band-5ghz">
+                        <label for="band-5ghz">5GHz Band</label>
+                    </div>
+                </div>
+
+                <!-- Channel Selection -->
+                <div class="settings-row">
+                    <div class="channel-section">
+                        <h5>2.4GHz Channels</h5>
+                        <div class="channel-grid" id="channels-2ghz"></div>
+                    </div>
+                    <div class="channel-section">
+                        <h5>5GHz Channels</h5>
+                        <div class="channel-grid" id="channels-5ghz"></div>
+                    </div>
+                </div>
+                <div class="settings-actions">
+                    <button id="scan-apply" class="neon-button">APPLY SCAN SETTINGS</button>
+                    <button id="settings-reset" class="neon-button danger">RESET</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
             <div id="devices-tab" class="tab-content active">
                 <div class="cyber-panel log-panel">
                     <div class="panel-header">
